@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "k3kroki"
+version = "0.1.0"
+description = "Convert diagrams to images via the kroki.io API — zero local dependencies"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    { name = "Zhang Yanpo", email = "drdr.xp@gmail.com" }
+]
+keywords = ["diagram", "kroki", "graphviz", "mermaid", "plantuml", "svg", "png"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "resvg-py>=0.2",
+    "Pillow>=10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/pykit3/k3kroki"
+Documentation = "https://k3kroki.readthedocs.io"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff",
+    "coverage",
+    "numpy",
+    "scikit-image",
+    "Pillow",
+]
+publish = [
+    "build",
+    "twine",
+    "pk3",
+]
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.24",
+]
+
+[tool.setuptools]
+packages = ["k3kroki"]
+
+[tool.setuptools.package-dir]
+k3kroki = "."
+
+[tool.ruff]
+line-length = 120
