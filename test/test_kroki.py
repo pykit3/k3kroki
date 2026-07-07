@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy
-import skimage
 from skimage.metrics import structural_similarity as ssim
 
 import k3kroki
@@ -24,7 +22,29 @@ from k3kroki.kroki import (
     convert_to_file,
 )
 
-this_base = os.path.dirname(__file__)
+DATA_DIR = Path(__file__).parent / "data"
+
+
+def _mock_urlopen_response(response_data: bytes = b"<svg/>"):
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = response_data
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    return mock_resp
+
+
+def _image_ssim(want_path: Path, got_path: Path) -> float:
+    from PIL import Image as PILImage
+
+    want_img = PILImage.open(want_path).convert("RGB")
+    got_img = PILImage.open(got_path).convert("RGB")
+
+    if want_img.size != got_img.size:
+        got_img = got_img.resize(want_img.size, PILImage.LANCZOS)
+
+    img1 = numpy.asarray(want_img)
+    img2 = numpy.asarray(got_img)
+    return ssim(img1, img2, channel_axis=2, data_range=255)
 
 
 class TestConstants(unittest.TestCase):
@@ -53,12 +73,7 @@ class TestValidation(unittest.TestCase):
 
     def test_diagram_type_case_insensitive(self):
         with patch("k3kroki.kroki.urllib.request.urlopen") as mock_urlopen:
-            mock_resp = MagicMock()
-            mock_resp.read.return_value = b"<svg/>"
-            mock_resp.__enter__ = lambda s: s
-            mock_resp.__exit__ = MagicMock(return_value=False)
-            mock_urlopen.return_value = mock_resp
-
+            mock_urlopen.return_value = _mock_urlopen_response()
             convert("Graphviz", "digraph{a->b}", "SVG")
 
             req = mock_urlopen.call_args[0][0]
@@ -66,16 +81,9 @@ class TestValidation(unittest.TestCase):
 
 
 class TestConvertMocked(unittest.TestCase):
-    def _mock_urlopen(self, response_data: bytes = b"<svg/>"):
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = response_data
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        return mock_resp
-
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_url_construction(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         convert("mermaid", "graph TD; A-->B", "png")
 
         req = mock_urlopen.call_args[0][0]
@@ -83,7 +91,7 @@ class TestConvertMocked(unittest.TestCase):
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_custom_base_url(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         convert("graphviz", "digraph{}", "svg", base_url="http://localhost:8000")
 
         req = mock_urlopen.call_args[0][0]
@@ -91,7 +99,7 @@ class TestConvertMocked(unittest.TestCase):
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_trailing_slash_stripped(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         convert("graphviz", "digraph{}", "svg", base_url="https://kroki.io/")
 
         req = mock_urlopen.call_args[0][0]
@@ -99,7 +107,7 @@ class TestConvertMocked(unittest.TestCase):
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_content_type_header(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         convert("graphviz", "digraph{a->b}", "svg")
 
         req = mock_urlopen.call_args[0][0]
@@ -107,7 +115,7 @@ class TestConvertMocked(unittest.TestCase):
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_post_body_is_utf8_encoded(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         source = 'digraph { label="日本語" }'
         convert("graphviz", source, "svg")
 
@@ -116,13 +124,13 @@ class TestConvertMocked(unittest.TestCase):
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_returns_bytes(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen(b"\x89PNG")
+        mock_urlopen.return_value = _mock_urlopen_response(b"\x89PNG")
         result = convert("graphviz", "digraph{}", "png")
         self.assertEqual(result, b"\x89PNG")
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_timeout_passed(self, mock_urlopen):
-        mock_urlopen.return_value = self._mock_urlopen()
+        mock_urlopen.return_value = _mock_urlopen_response()
         convert("graphviz", "digraph{}", "svg", timeout=5.0)
         self.assertEqual(mock_urlopen.call_args[1]["timeout"], 5.0)
 
@@ -246,157 +254,67 @@ class TestExceptionHierarchy(unittest.TestCase):
 class TestImageOutput(unittest.TestCase):
     """Tests that hit kroki.io and compare rendered images against expected outputs."""
 
+    def _assert_bitmap(self, diagram_type: str, fmt: str) -> None:
+        source = (DATA_DIR / diagram_type / "input").read_text()
+        got_bytes = convert(diagram_type, source, fmt)
+
+        got_path = DATA_DIR / diagram_type / f"got.{fmt}"
+        got_path.write_bytes(got_bytes)
+        try:
+            sim = _image_ssim(DATA_DIR / diagram_type / f"want.{fmt}", got_path)
+            self.assertGreater(sim, 0.75)
+        finally:
+            got_path.unlink(missing_ok=True)
+
     def test_convert_png(self):
-        """Render PNG diagrams and compare against expected images using SSIM."""
-        d = pjoin(this_base, "data")
-
-        for diagram_type, folder in (
-            ("graphviz", "graphviz"),
-            ("mermaid", "mermaid"),
-            ("plantuml", "plantuml"),
-            ("d2", "d2"),
-            ("svgbob", "svgbob"),
-        ):
-            with self.subTest(diagram_type=diagram_type, fmt="png"):
-                source = fread(d, folder, "input")
-                got = convert(diagram_type, source, "png")
-
-                wantpath = pjoin(d, folder, "want.png")
-                gotpath = pjoin(d, folder, "got.png")
-                fwrite(gotpath, got)
-
-                sim = cmp_image(wantpath, gotpath)
-                self.assertGreater(sim, 0.75)
-
-                rm(gotpath)
-
-    def test_convert_svg(self):
-        """Render SVG diagrams and compare against expected SVG files."""
-        d = pjoin(this_base, "data")
-
-        for diagram_type, folder in (
-            ("graphviz", "graphviz"),
-            ("mermaid", "mermaid"),
-            ("plantuml", "plantuml"),
-            ("d2", "d2"),
-            ("svgbob", "svgbob"),
-        ):
-            wantpath = pjoin(d, folder, "want.svg")
-            if not os.path.exists(wantpath):
-                continue
-
-            with self.subTest(diagram_type=diagram_type, fmt="svg"):
-                source = fread(d, folder, "input")
-                got = convert(diagram_type, source, "svg")
-
-                gotpath = pjoin(d, folder, "got.svg")
-                fwrite(gotpath, got)
-
-                want_svg = Path(wantpath).read_bytes()
-                self.assertIn(b"<svg", want_svg)
-                self.assertIn(b"<svg", got)
-
-                rm(gotpath)
+        for t in ("graphviz", "mermaid", "plantuml", "d2", "svgbob"):
+            with self.subTest(diagram_type=t):
+                self._assert_bitmap(t, "png")
 
     def test_convert_webp(self):
-        """Render WebP diagrams (via SVG fallback) and compare using SSIM."""
-        d = pjoin(this_base, "data")
+        for t in ("d2", "svgbob", "graphviz"):
+            with self.subTest(diagram_type=t):
+                self._assert_bitmap(t, "webp")
 
-        for diagram_type, folder in (
-            ("d2", "d2"),
-            ("svgbob", "svgbob"),
-            ("graphviz", "graphviz"),
-        ):
-            with self.subTest(diagram_type=diagram_type, fmt="webp"):
-                source = fread(d, folder, "input")
-                got = convert(diagram_type, source, "webp")
+    def test_convert_svg(self):
+        for t in ("graphviz", "mermaid", "plantuml", "d2", "svgbob"):
+            want_path = DATA_DIR / t / "want.svg"
+            if not want_path.exists():
+                continue
 
-                wantpath = pjoin(d, folder, "want.webp")
-                gotpath = pjoin(d, folder, "got.webp")
-                fwrite(gotpath, got)
-
-                sim = cmp_image(wantpath, gotpath)
-                self.assertGreater(sim, 0.75)
-
-                rm(gotpath)
+            with self.subTest(diagram_type=t):
+                source = (DATA_DIR / t / "input").read_text()
+                got = convert(t, source, "svg")
+                self.assertIn(b"<svg", want_path.read_bytes())
+                self.assertIn(b"<svg", got)
 
     def test_convert_to_file(self):
-        """Test convert_to_file writes correct image data."""
-        d = pjoin(this_base, "data")
-
-        for diagram_type, folder, fmt in (
-            ("graphviz", "graphviz", "png"),
-            ("mermaid", "mermaid", "png"),
-            ("plantuml", "plantuml", "png"),
-            ("d2", "d2", "svg"),
-            ("d2", "d2", "png"),
-            ("svgbob", "svgbob", "svg"),
-            ("svgbob", "svgbob", "png"),
-            ("d2", "d2", "webp"),
-            ("svgbob", "svgbob", "webp"),
-        ):
-            wantpath = pjoin(d, folder, "want." + fmt)
-            if not os.path.exists(wantpath):
+        cases = [
+            ("graphviz", "png"),
+            ("mermaid", "png"),
+            ("plantuml", "png"),
+            ("d2", "svg"),
+            ("d2", "png"),
+            ("d2", "webp"),
+            ("svgbob", "svg"),
+            ("svgbob", "png"),
+            ("svgbob", "webp"),
+        ]
+        for diagram_type, fmt in cases:
+            want_path = DATA_DIR / diagram_type / f"want.{fmt}"
+            if not want_path.exists():
                 continue
 
             with self.subTest(diagram_type=diagram_type, fmt=fmt):
-                source = fread(d, folder, "input")
-                gotpath = pjoin(d, folder, "got." + fmt)
+                source = (DATA_DIR / diagram_type / "input").read_text()
+                got_path = DATA_DIR / diagram_type / f"got.{fmt}"
 
-                convert_to_file(diagram_type, source, gotpath, fmt)
-
-                if fmt == "svg":
-                    got = Path(gotpath).read_bytes()
-                    self.assertIn(b"<svg", got)
-                else:
-                    sim = cmp_image(wantpath, gotpath)
-                    self.assertGreater(sim, 0.75)
-
-                rm(gotpath)
-
-
-def cmp_image(want, got):
-    from PIL import Image as PILImage
-
-    want_img = PILImage.open(want).convert("RGB")
-    got_img = PILImage.open(got).convert("RGB")
-
-    if want_img.size != got_img.size:
-        got_img = got_img.resize(want_img.size, PILImage.LANCZOS)
-
-    da = numpy.array(want_img)
-    db = numpy.array(got_img)
-
-    img1 = skimage.img_as_int(da)
-    img2 = skimage.img_as_int(db)
-
-    print("img1:-------------", want)
-    print(img1.shape)
-    print("img2:-------------", got)
-    print(img2.shape)
-
-    p = ssim(img1, img2, channel_axis=2)
-
-    print("similarity(want/got):", want, got, p)
-    return p
-
-
-def pjoin(*p):
-    return os.path.join(*p)
-
-
-def rm(*p):
-    try:
-        os.unlink(os.path.join(*p))
-    except OSError:
-        pass
-
-
-def fread(*p):
-    with open(os.path.join(*p), "r") as f:
-        return f.read()
-
-
-def fwrite(path, data):
-    with open(path, "wb") as f:
-        f.write(data)
+                convert_to_file(diagram_type, source, str(got_path), fmt)
+                try:
+                    if fmt == "svg":
+                        self.assertIn(b"<svg", got_path.read_bytes())
+                    else:
+                        sim = _image_ssim(want_path, got_path)
+                        self.assertGreater(sim, 0.75)
+                finally:
+                    got_path.unlink(missing_ok=True)

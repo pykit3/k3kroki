@@ -134,7 +134,7 @@ def convert(
     Args:
         diagram_type: Diagram language (e.g. ``"graphviz"``, ``"mermaid"``).
         source: Diagram source text.
-        output_format: One of ``"svg"``, ``"png"``, ``"jpeg"``, ``"pdf"``.
+        output_format: One of ``"svg"``, ``"png"``, ``"jpeg"``, ``"pdf"``, ``"webp"``.
         base_url: Kroki server URL. Defaults to ``https://kroki.io``.
         timeout: HTTP timeout in seconds.
 
