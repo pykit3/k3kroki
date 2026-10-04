@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import tempfile
 import unittest
 from pathlib import Path
@@ -207,6 +208,19 @@ class TestErrorWrapping(unittest.TestCase):
 
         self.assertEqual("The read operation timed out", str(ctx.exception))
         self.assertIs(timeout, ctx.exception.__cause__)
+
+    @patch("k3kroki.kroki.urllib.request.urlopen")
+    def test_incomplete_read_becomes_network_error(self, mock_urlopen):
+        incomplete = http.client.IncompleteRead(b"<svg", 10)
+        resp = _mock_urlopen_response()
+        resp.read.side_effect = incomplete
+        mock_urlopen.return_value = resp
+
+        with self.assertRaises(KrokiNetworkError) as ctx:
+            convert("graphviz", "digraph{}", "svg")
+
+        self.assertEqual("IncompleteRead(4 bytes read, 10 more expected)", str(ctx.exception))
+        self.assertIs(incomplete, ctx.exception.__cause__)
 
 
 class TestConvertToFileMocked(unittest.TestCase):

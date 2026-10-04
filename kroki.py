@@ -8,6 +8,7 @@ Note:
 
 from __future__ import annotations
 
+import http.client
 import io
 import urllib.error
 import urllib.request
@@ -80,9 +81,10 @@ def _fetch_kroki(base_url: str, diagram_type: str, output_format: str, data: byt
         raise KrokiAPIError(exc.code, body) from exc
     except urllib.error.URLError as exc:
         raise KrokiNetworkError(str(exc.reason)) from exc
-    except OSError as exc:
+    except (OSError, http.client.HTTPException) as exc:
         # urllib wraps only the errors raised while sending the request; a
-        # timeout or reset while reading the response arrives unwrapped.
+        # timeout or reset while reading the response arrives unwrapped, and a
+        # truncated body raises `http.client.IncompleteRead`, not an OSError.
         raise KrokiNetworkError(str(exc)) from exc
 
 
