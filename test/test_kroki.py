@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -265,9 +266,22 @@ class TestExceptionHierarchy(unittest.TestCase):
 class TestImageOutput(unittest.TestCase):
     """Tests that hit kroki.io and compare rendered images against expected outputs."""
 
+    @contextlib.contextmanager
+    def _skip_if_kroki_down(self):
+        """Skip, instead of fail, when kroki.io itself times out or returns 5xx."""
+        try:
+            yield
+        except KrokiNetworkError as e:
+            self.skipTest(f"kroki.io unreachable: {e}")
+        except KrokiAPIError as e:
+            if e.status_code < 500:
+                raise
+            self.skipTest(f"kroki.io failed: {e}")
+
     def _assert_bitmap(self, diagram_type: str, fmt: str) -> None:
         source = (DATA_DIR / diagram_type / "input").read_text()
-        got_bytes = convert(diagram_type, source, fmt)
+        with self._skip_if_kroki_down():
+            got_bytes = convert(diagram_type, source, fmt)
 
         got_path = DATA_DIR / diagram_type / f"got.{fmt}"
         got_path.write_bytes(got_bytes)
@@ -295,7 +309,8 @@ class TestImageOutput(unittest.TestCase):
 
             with self.subTest(diagram_type=t):
                 source = (DATA_DIR / t / "input").read_text()
-                got = convert(t, source, "svg")
+                with self._skip_if_kroki_down():
+                    got = convert(t, source, "svg")
                 self.assertIn(b"<svg", want_path.read_bytes())
                 self.assertIn(b"<svg", got)
 
@@ -320,7 +335,8 @@ class TestImageOutput(unittest.TestCase):
                 source = (DATA_DIR / diagram_type / "input").read_text()
                 got_path = DATA_DIR / diagram_type / f"got.{fmt}"
 
-                convert_to_file(diagram_type, source, str(got_path), fmt)
+                with self._skip_if_kroki_down():
+                    convert_to_file(diagram_type, source, str(got_path), fmt)
                 try:
                     if fmt == "svg":
                         self.assertIn(b"<svg", got_path.read_bytes())
