@@ -10,6 +10,7 @@ from skimage.metrics import structural_similarity as ssim
 
 import k3kroki
 from k3kroki.kroki import (
+    _EXT_TO_FORMAT,
     DEFAULT_BASE_URL,
     DIAGRAM_TYPES,
     OUTPUT_FORMATS,
@@ -17,7 +18,6 @@ from k3kroki.kroki import (
     KrokiNetworkError,
     UnsupportedDiagramError,
     UnsupportedFormatError,
-    _EXT_TO_FORMAT,
     convert,
     convert_to_file,
 )
