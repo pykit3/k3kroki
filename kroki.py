@@ -80,6 +80,10 @@ def _fetch_kroki(base_url: str, diagram_type: str, output_format: str, data: byt
         raise KrokiAPIError(exc.code, body) from exc
     except urllib.error.URLError as exc:
         raise KrokiNetworkError(str(exc.reason)) from exc
+    except OSError as exc:
+        # urllib wraps only the errors raised while sending the request; a
+        # timeout or reset while reading the response arrives unwrapped.
+        raise KrokiNetworkError(str(exc)) from exc
 
 
 def _svg_to_bitmap(svg_bytes: bytes, output_format: str) -> bytes:

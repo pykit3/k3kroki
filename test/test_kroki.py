@@ -196,6 +196,17 @@ class TestErrorWrapping(unittest.TestCase):
         with self.assertRaises(KrokiNetworkError):
             convert("graphviz", "digraph{}", "svg")
 
+    @patch("k3kroki.kroki.urllib.request.urlopen")
+    def test_read_timeout_becomes_network_error(self, mock_urlopen):
+        timeout = TimeoutError("The read operation timed out")
+        mock_urlopen.side_effect = timeout
+
+        with self.assertRaises(KrokiNetworkError) as ctx:
+            convert("graphviz", "digraph{}", "svg")
+
+        self.assertEqual("The read operation timed out", str(ctx.exception))
+        self.assertIs(timeout, ctx.exception.__cause__)
+
 
 class TestConvertToFileMocked(unittest.TestCase):
     @patch("k3kroki.kroki.convert")
