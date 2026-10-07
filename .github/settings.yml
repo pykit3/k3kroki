@@ -1,0 +1,6 @@
+_extends: gh-config
+
+repository:
+  description: Convert diagrams to images via the kroki.io API — zero local dependencies
+  homepage: https://blog.openacid.com
+  topics: diagram, kroki, graphviz, mermaid, plantuml, svg, png
