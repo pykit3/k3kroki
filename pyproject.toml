@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "k3kroki"
-version = "0.1.1"
+version = "0.1.2"
 description = "Convert diagrams to images via the kroki.io API — zero local dependencies"
 readme = "README.md"
 license = "MIT"
