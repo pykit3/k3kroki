@@ -206,6 +206,22 @@ class TestErrorWrapping(unittest.TestCase):
         fp.close.assert_called_once_with()
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
+    def test_error_body_incomplete_read_becomes_network_error(self, mock_urlopen):
+        import urllib.error
+
+        incomplete = http.client.IncompleteRead(b"syntax", 10)
+        fp = MagicMock()
+        fp.read.side_effect = incomplete
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 400, "Bad Request", {}, fp)
+
+        with self.assertRaises(KrokiNetworkError) as ctx:
+            convert("graphviz", "digraph{}", "svg")
+
+        self.assertEqual("IncompleteRead(6 bytes read, 10 more expected)", str(ctx.exception))
+        self.assertIs(incomplete, ctx.exception.__cause__)
+        fp.close.assert_called_once_with()
+
+    @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_url_error_becomes_network_error(self, mock_urlopen):
         import urllib.error
 
