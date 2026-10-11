@@ -77,7 +77,14 @@ def _fetch_kroki(base_url: str, diagram_type: str, output_format: str, data: byt
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read()
     except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
+        # The handlers below do not catch what this handler raises, so a failed
+        # read of the error body is translated here.
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except (OSError, http.client.HTTPException) as read_exc:
+            raise KrokiNetworkError(str(read_exc)) from read_exc
+        finally:
+            exc.close()
         raise KrokiAPIError(exc.code, body) from exc
     except urllib.error.URLError as exc:
         raise KrokiNetworkError(str(exc.reason)) from exc

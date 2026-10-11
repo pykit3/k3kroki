@@ -190,6 +190,22 @@ class TestErrorWrapping(unittest.TestCase):
         self.assertIn("syntax error", ctx.exception.body)
 
     @patch("k3kroki.kroki.urllib.request.urlopen")
+    def test_error_body_timeout_becomes_network_error(self, mock_urlopen):
+        import urllib.error
+
+        timeout = TimeoutError("The read operation timed out")
+        fp = MagicMock()
+        fp.read.side_effect = timeout
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 502, "Bad Gateway", {}, fp)
+
+        with self.assertRaises(KrokiNetworkError) as ctx:
+            convert("graphviz", "digraph{}", "svg")
+
+        self.assertEqual("The read operation timed out", str(ctx.exception))
+        self.assertIs(timeout, ctx.exception.__cause__)
+        fp.close.assert_called_once_with()
+
+    @patch("k3kroki.kroki.urllib.request.urlopen")
     def test_url_error_becomes_network_error(self, mock_urlopen):
         import urllib.error
 
