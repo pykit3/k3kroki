@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import contextlib
 import http.client
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy
+from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 
 import k3kroki
@@ -20,6 +22,7 @@ from k3kroki.kroki import (
     KrokiNetworkError,
     UnsupportedDiagramError,
     UnsupportedFormatError,
+    _svg_to_bitmap,
     convert,
     convert_to_file,
 )
@@ -173,6 +176,21 @@ class TestSvgFallbackMocked(unittest.TestCase):
             convert("d2", "x -> y", "svg")
 
         mock_fetch.assert_called_once()
+
+
+class TestSvgToBitmap(unittest.TestCase):
+    def test_jpeg_transparent_background(self):
+        # The left 8x8 block is transparent and the right one is black. Each
+        # fills one JPEG block, so JPEG keeps its color exactly.
+        svg = (
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">'
+            b'<rect x="8" width="8" height="8" fill="black"/></svg>'
+        )
+        jpeg = _svg_to_bitmap(svg, "jpeg")
+        img = Image.open(io.BytesIO(jpeg))
+
+        row = b"\xff\xff\xff" * 8 + b"\x00\x00\x00" * 8
+        self.assertEqual(row * 8, img.tobytes())
 
 
 class TestErrorWrapping(unittest.TestCase):

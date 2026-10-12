@@ -104,7 +104,10 @@ def _svg_to_bitmap(svg_bytes: bytes, output_format: str) -> bytes:
     img = Image.open(io.BytesIO(png_bytes))
     buf = io.BytesIO()
     if output_format == "jpeg":
-        img = img.convert("RGB")
+        # JPEG has no alpha channel, so the image is laid over a white background.
+        background = Image.new("RGB", img.size, "white")
+        background.paste(img, mask=img.getchannel("A"))
+        img = background
     img.save(buf, format=output_format.upper(), quality=90)
     return buf.getvalue()
 
